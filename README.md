@@ -64,7 +64,9 @@ Dự án này bao gồm một ứng dụng Streamlit để tối ưu hóa giá b
 ## Lưu ý
 - Đảm bảo các file `.pkl` và `.csv` nằm đúng trong thư mục `models/` và `data/`.
 - Nếu gặp lỗi về đường dẫn, kiểm tra và sửa trong `app.py` hoặc `scripts/__init__.py`.
-- Liên hệ [your_email@example.com] nếu cần hỗ trợ.
+- Liên hệ [liemphongiv666@gmail.com] nếu cần hỗ trợ.
 
 ## Tác giả
-- [Your Name]
+- Lương Liêm Phong
+- Trần Khánh Vũ
+- Văn Trọng Dương
