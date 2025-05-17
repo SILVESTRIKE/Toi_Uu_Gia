@@ -176,89 +176,11 @@ elif page == "Khuyến mãi":
 
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
-    st.title("🧮 Đề xuất Điều chỉnh Giá")
-
-    # Lấy danh sách SELL_ID
-    sell_ids = combined_data['SELL_ID'].unique()
-    single_products = []
-    combos = {}
-
-    # Phân loại sản phẩm đơn vs combo
-    for sell_id in sell_ids:
-        sell_data = combined_data[combined_data['SELL_ID'] == sell_id]
-        items = sell_data['ITEM_NAME'].unique()
-        if len(items) > 1:
-            combos[sell_id] = list(items)
-        else:
-            item = items[0].lower()
-            single_products.append(f"{item}_{sell_id}")
-
-    # ==========================
-    # 🔹 SẢN PHẨM BÁN LẺ
-    # ==========================
-    st.subheader("🔹 Sản phẩm bán lẻ")
-    single_recommendations = []
-
-    for product in single_products:
-        item_name_lower, sell_id = product.split('_')
-        item_name = item_name_lower.upper()
-        sell_id = int(sell_id)
-
-        # Nhập giá mua riêng cho từng sản phẩm
-        buying_price = st.number_input(
-            f"Nhập giá mua cho {item_name} (SELL_ID: {sell_id})",
-            min_value=0.0, value=9.0, step=0.1,
-            key=f"buying_price_single_{product}"
-        )
-
-        product_data = combined_data[
-            (combined_data['ITEM_NAME'] == item_name) & 
-            (combined_data['SELL_ID'] == sell_id)
-        ]
-
-        model = models[f"{item.upper()}_{sell_id}"]
-        result = recommend_price_adjustments(product_data, model, buying_price)
-        single_recommendations.extend(result.to_dict('records'))
-
-    # Hiển thị kết quả bán lẻ
-    single_df = pd.DataFrame(single_recommendations)
-    st.dataframe(single_df)
-    csv_single = single_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Tải kết quả sản phẩm bán lẻ", data=csv_single, file_name="de_xuat_san_pham.csv", mime='text/csv')
-
-    # ==========================
-    # 🔸 COMBO
-    # ==========================
-    st.subheader("🔸 Combo")
-    combo_recommendations = []
-
-    for sell_id, items in combos.items():
-        buying_prices = {}
-        st.markdown(f"**Combo SELL_ID: {sell_id}**")
-        for item in items:
-            key = f"{item}_{sell_id}"
-            buying_prices[item] = st.number_input(
-                f"Nhập giá mua cho {item.upper()} trong combo {sell_id}",
-                min_value=0.0, value=9.0, step=0.1,
-                key=f"buying_price_combo_{key}"
-            )
-
-        # Gợi ý cho từng sản phẩm trong combo
-        for item in items:
-            product_data = combined_data[
-                (combined_data['ITEM_NAME'] == item.upper()) & 
-                (combined_data['SELL_ID'] == sell_id)
-            ]
-            model = models[f"{item}_{sell_id}"]
-            result = recommend_price_adjustments(product_data, model, buying_price)
-            combo_recommendations.extend(result.to_dict('records'))
-
-    # Hiển thị kết quả combo
-    combo_df = pd.DataFrame(combo_recommendations)
-    st.dataframe(combo_df)
-    csv_combo = combo_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Tải kết quả combo", data=csv_combo, file_name="de_xuat_combo.csv", mime='text/csv')
-
+    st.title("Đề xuất Điều chỉnh Giá")
+    buying_price = st.number_input("Nhập giá mua", min_value=0.0, value=9.0, step=0.1)
+    
+    recommendations = recommend_price_adjustments(combined_data, models, buying_price)
+    st.table(recommendations)
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":

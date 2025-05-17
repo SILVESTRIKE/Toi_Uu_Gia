@@ -35,29 +35,28 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'profit': profit
     }
 
-def recommend_price_adjustments(product_data, model, buying_price):
-    current_price = product_data['PRICE'].mean()
-    
-    # Dự đoán giá tối ưu
-    optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
-    
-    # Tính độ co giãn
-    model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-    elasticity = model_fit.params['PRICE']
-    
-    adjustment = optimal_price - current_price
-    item_name = product_data['ITEM_NAME'].iloc[0]
-    sell_id = product_data['SELL_ID'].iloc[0]
-
-    return pd.DataFrame([{
-        'Sản phẩm': f"{item_name}_{sell_id}",
-        'Giá hiện tại': round(current_price, 2),
-        'Giá tối ưu': round(optimal_price, 2),
-        'Độ co giãn': round(elasticity, 2),
-        'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
-        'Thay đổi': round(abs(adjustment), 2)
-    }])
-
+def recommend_price_adjustments(data, models, buying_price):
+    recommendations = []
+    for product, model in models.items():
+        product_data = data[(data['ITEM_NAME'] == product.split('_')[0].upper()) & 
+                          (data['SELL_ID'] == int(product.split('_')[1]))]
+        current_price = product_data.PRICE.mean()
+        optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
+        
+        # Tính độ co giãn giá
+        model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
+        elasticity = model_fit.params['PRICE']
+        
+        adjustment = optimal_price - current_price
+        recommendations.append({
+            'Sản phẩm': product,
+            'Giá hiện tại': round(current_price, 2),
+            'Giá tối ưu': round(optimal_price, 2),
+            'Độ co giãn': round(elasticity, 2),
+            'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
+            'Thay đổi': round(abs(adjustment), 2)
+        })
+    return pd.DataFrame(recommendations)
 
 def plot_price_quantity(data, model):
     prices = np.arange(data.PRICE.min() - 1, data.PRICE.min() + 10, 0.01)
