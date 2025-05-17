@@ -66,38 +66,30 @@ if page == "Giá tối ưu":
     # Hiển thị sản phẩm bán lẻ
     st.subheader("Sản phẩm bán lẻ")
     single_results = []
-
-    if st.button(" Tính giá tối ưu cho các sản phẩm bán lẻ"):
-        for product in single_products:
-            buying_price = st.number_input(
-                f"Nhập giá mua cho {product}",
-                min_value=0.0, value=9.0, step=0.1,
-                key=f"buying_price_{product}"
-            )
-            product_data = combined_data[
-                (combined_data['ITEM_NAME'] == product.split('_')[0].upper()) &
-                (combined_data['SELL_ID'] == int(product.split('_')[1]))
-            ]
-            result = find_optimal_price(product_data, models[product], buying_price)
-            single_results.append({
-                'Sản phẩm': product,
-                'Giá tối ưu': round(result['PRICE'].iloc[0], 2),
-                'Số lượng dự đoán': round(result['QUANTITY'].iloc[0], 2),
-                'Lợi nhuận tối đa': round(result['PROFIT'].iloc[0], 2)
-            })
-        st.table(pd.DataFrame(single_results))
+    for product in single_products:
+        buying_price = st.number_input(f"Nhập giá mua cho {product}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product}")
+        product_data = combined_data[(combined_data['ITEM_NAME'] == product.split('_')[0].upper()) & 
+                                    (combined_data['SELL_ID'] == int(product.split('_')[1]))]
+        result = find_optimal_price(product_data, models[product], buying_price)
+        single_results.append({
+            'Sản phẩm': product,
+            'Giá tối ưu': round(result['PRICE'].iloc[0], 2),
+            'Số lượng dự đoán': round(result['QUANTITY'].iloc[0], 2),
+            'Lợi nhuận tối đa': round(result['PROFIT'].iloc[0], 2)
+        })
+    st.table(pd.DataFrame(single_results))
+    
     # Hiển thị combo
     st.subheader("Combo")
     combo_results = []
-    if st.button(" Tính giá tối ưu cho các sản phẩm bán lẻ"):
-        for sell_id, items in combos.items():
-            # Nhập giá mua cho từng sản phẩm trong combo
-            buying_prices = {}
-            for item in items:
-                product_key = f"{item.lower()}_{sell_id}"
-                buying_prices[product_key] = st.number_input(f"Nhập giá mua cho {product_key} trong combo {sell_id}", 
-                                                            min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product_key}")
-            
+    for sell_id, items in combos.items():
+        # Nhập giá mua cho từng sản phẩm trong combo
+        buying_prices = {}
+        for item in items:
+            product_key = f"{item.lower()}_{sell_id}"
+            buying_prices[product_key] = st.number_input(f"Nhập giá mua cho {product_key} trong combo {sell_id}", 
+                                                        min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product_key}")
+        
         # Tính giá tối ưu và lợi nhuận cho combo
         total_price = 0
         total_quantity = 0
