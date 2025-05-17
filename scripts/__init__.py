@@ -35,28 +35,26 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'profit': profit
     }
 
-
-def recommend_price_adjustments(data, models, buying_price):
+def recommend_price_adjustments(data, models, buying_prices_dict):
     recommendations = []
 
     for product, model in models.items():
         try:
-            # Tách tên sản phẩm và SELL_ID
             item_name, sell_id = product.split('_')
             item_name = item_name.upper()
             sell_id = int(sell_id)
 
-            # Lọc dữ liệu cho sản phẩm cụ thể
             product_data = data[(data['ITEM_NAME'].str.upper() == item_name) & 
                                 (data['SELL_ID'] == sell_id)]
 
             if product_data.empty or product_data['PRICE'].nunique() < 2:
-                raise ValueError(f"Không đủ dữ liệu hoặc giá không đa dạng cho sản phẩm {product}")
+                raise ValueError("Không đủ dữ liệu hoặc giá không đa dạng")
 
             current_price = product_data['PRICE'].mean()
+            buying_price = buying_prices_dict.get(product, current_price * 0.8)
+
             optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
 
-            # Fit mô hình hồi quy
             model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
             elasticity = model_fit.params['PRICE']
 
@@ -71,7 +69,6 @@ def recommend_price_adjustments(data, models, buying_price):
                 'Thay đổi': round(abs(adjustment), 2)
             })
         except Exception as e:
-            # Log lỗi và tiếp tục xử lý sản phẩm khác
             recommendations.append({
                 'Sản phẩm': product,
                 'Giá hiện tại': None,

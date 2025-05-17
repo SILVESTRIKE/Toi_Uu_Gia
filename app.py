@@ -175,14 +175,15 @@ elif page == "Khuyến mãi":
     # Vẽ biểu đồ
     fig = plot_discount_impact(product_data, models[product], buying_price)
     st.plotly_chart(fig)
-
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
-    st.title("Đề xuất Điều chỉnh Giá")
+    st.title("📊 Đề xuất Điều chỉnh Giá")
 
-    buying_price = st.number_input("Nhập giá mua mặc định (áp dụng nếu không có giá riêng)", min_value=0.0, value=9.0, step=0.1)
+    st.markdown("### 💰 Nhập giá mua riêng cho từng sản phẩm (nếu không có, sẽ dùng giá mặc định)")
 
-    # Nhóm theo combo và sản phẩm đơn
+    buying_price_default = st.number_input("Giá mua mặc định", min_value=0.0, value=9.0, step=0.1)
+
+    # Tách sản phẩm thành sản phẩm đơn và combo
     sell_ids = combined_data['SELL_ID'].unique()
     single_products = []
     combos = {}
@@ -193,17 +194,39 @@ elif page == "Đề xuất điều chỉnh giá":
         if len(items) > 1:
             combos[sell_id] = list(items)
         else:
-            single_products.append(f"{items[0].lower()}_{sell_id}")
+            product_key = f"{items[0].lower()}_{sell_id}"
+            single_products.append(product_key)
 
-    # Đề xuất cho sản phẩm bán lẻ
-    st.subheader("Đề xuất cho sản phẩm bán lẻ")
-    single_recommendations = recommend_price_adjustments(combined_data, models, buying_price)
-    st.table(single_recommendations)
+    # Nhập giá mua riêng cho từng sản phẩm đơn
+    buying_prices = {}
+    with st.expander("🔧 Nhập giá mua từng sản phẩm đơn"):
+        for product_key in single_products:
+            item_name, sell_id = product_key.split('_')
+            item_data = combined_data[(combined_data['ITEM_NAME'] == item_name.upper()) & 
+                                      (combined_data['SELL_ID'] == int(sell_id))]
+            default_price = round(item_data['PRICE'].mean() * 0.8, 2)
+            buying_prices[product_key] = st.number_input(
+                f"Giá mua cho {item_name.upper()} (SELL_ID {sell_id})",
+                value=default_price,
+                min_value=0.0,
+                step=0.1,
+                key=f"bp_{product_key}"
+            )
+
+    # 👉 Nếu thiếu giá riêng => dùng giá mặc định
+    for product in single_products:
+        if product not in buying_prices:
+            buying_prices[product] = buying_price_default
+
+    # Đề xuất cho sản phẩm đơn
+    st.subheader("🛍️ Đề xuất cho sản phẩm bán lẻ")
+    single_recommendations = recommend_price_adjustments(combined_data, models, buying_prices)
+    st.dataframe(single_recommendations, use_container_width=True)
 
     # Đề xuất cho combo
-    st.subheader("Đề xuất cho combo")
-    combo_recommendations = []
+    st.subheader("🧃 Đề xuất cho Combo sản phẩm")
 
+    combo_recommendations = []
     for sell_id, items in combos.items():
         combo_name = f"Combo {sell_id}: {', '.join(items)}"
         total_current_price = 0
@@ -214,15 +237,18 @@ elif page == "Đề xuất điều chỉnh giá":
 
         for item in items:
             product_key = f"{item.lower()}_{sell_id}"
-            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) &
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) & 
                                          (combined_data['SELL_ID'] == sell_id)]
 
-            if product_key not in models:
+            if product_key not in models or product_data.empty:
                 continue
+
+            # Lấy giá mua riêng hoặc mặc định
+            buying_price = buying_prices.get(product_key, buying_price_default)
 
             optimal_result = find_optimal_price(product_data, models[product_key], buying_price)
             optimal_price = optimal_result['PRICE'].iloc[0]
-            current_price = product_data.PRICE.mean()
+            current_price = product_data['PRICE'].mean()
             model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
             elasticity = model_fit.params['PRICE']
 
@@ -242,7 +268,8 @@ elif page == "Đề xuất điều chỉnh giá":
                 'Tổng thay đổi': round(total_adjustment, 2)
             })
 
-    st.table(pd.DataFrame(combo_recommendations))
+    st.dataframe(pd.DataFrame(combo_recommendations), use_container_width=True)
+
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
