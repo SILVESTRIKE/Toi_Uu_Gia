@@ -175,10 +175,11 @@ elif page == "Khuyến mãi":
     st.plotly_chart(fig)
 
 # Trang 4: Đề xuất điều chỉnh giá
+# Trang 4: Đề xuất điều chỉnh giá (phiên bản có nút bấm)
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
 
-    # Phân loại sản phẩm: đơn lẻ vs combo (giống trang 1)
+    # === 1. Phân loại như Trang 1 ===
     sell_ids = combined_data['SELL_ID'].unique()
     single_products = []
     combos = {}
@@ -191,55 +192,77 @@ elif page == "Đề xuất điều chỉnh giá":
         else:
             single_products.append(f"{items[0].lower()}_{sell_id}")
 
-    # ======= Sản phẩm bán lẻ =======
-    st.subheader("Sản phẩm bán lẻ")
-    single_recommendations = []
+    # Biến lưu giá mua (dùng chung cho cả lẻ & combo)
     buying_prices = {}
 
+    # === 2. Nhập giá mua – sản phẩm lẻ ===
+    st.subheader("Sản phẩm bán lẻ")
     for product_key in single_products:
         buying_prices[product_key] = st.number_input(
             f"Nhập giá mua cho {product_key}",
-            min_value=0.0,
-            value=9.0,
-            step=0.1,
+            min_value=0.0, value=9.0, step=0.1,
             key=f"buying_price_{product_key}"
         )
-        item_name = product_key.split('_')[0].upper()
-        sell_id = int(product_key.split('_')[1])
-        product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
-        if product_data.empty:
-            continue
-        result = calculate_adjustment(product_data, models[product_key], buying_prices[product_key], product_key)
-        single_recommendations.append(result)
 
-    st.table(pd.DataFrame(single_recommendations))
-
-    # ======= Combo =======
+    # === 3. Nhập giá mua – combo ===
     st.subheader("Combo")
-    combo_recommendations = []
-
     for sell_id, items in combos.items():
-        combo_results = []
         for item in items:
             product_key = f"{item.lower()}_{sell_id}"
             buying_prices[product_key] = st.number_input(
                 f"Nhập giá mua cho {product_key} trong combo {sell_id}",
-                min_value=0.0,
-                value=9.0,
-                step=0.1,
+                min_value=0.0, value=9.0, step=0.1,
                 key=f"buying_price_{product_key}"
             )
-            item_name = item.upper()
-            product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
-            if product_data.empty:
+
+    # === 4. Nút bấm kích hoạt tính ===
+    if st.button("🔍 Đề xuất giá", key="calc_adjust"):
+        # ----- 4a. Sản phẩm lẻ -----
+        single_recs = []
+        for product_key in single_products:
+            item_name = product_key.split('_')[0].upper()
+            sell_id = int(product_key.split('_')[1])
+            data_slice = combined_data[
+                (combined_data['ITEM_NAME'] == item_name) &
+                (combined_data['SELL_ID'] == sell_id)
+            ]
+            if data_slice.empty:
                 continue
-            result = calculate_adjustment(product_data, models[product_key], buying_prices[product_key], product_key)
-            combo_results.append(result)
-        
-        combo_recommendations.extend(combo_results)
+            rec = calculate_adjustment(
+                data_slice,
+                models[product_key],
+                buying_prices[product_key],
+                product_key
+            )
+            single_recs.append(rec)
 
-    st.table(pd.DataFrame(combo_recommendations))
+        st.subheader("Kết quả – Sản phẩm bán lẻ")
+        st.table(pd.DataFrame(single_recs))
 
+        # ----- 4b. Combo -----
+        combo_recs = []
+        for sell_id, items in combos.items():
+            for item in items:
+                product_key = f"{item.lower()}_{sell_id}"
+                item_name = item.upper()
+                data_slice = combined_data[
+                    (combined_data['ITEM_NAME'] == item_name) &
+                    (combined_data['SELL_ID'] == sell_id)
+                ]
+                if data_slice.empty:
+                    continue
+                rec = calculate_adjustment(
+                    data_slice,
+                    models[product_key],
+                    buying_prices[product_key],
+                    product_key
+                )
+                combo_recs.append(rec)
+
+        st.subheader("Kết quả – Combo")
+        st.table(pd.DataFrame(combo_recs))
+    else:
+        st.info("💡 Nhập xong giá mua rồi bấm **Đề xuất giá** để tính nha!")
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
