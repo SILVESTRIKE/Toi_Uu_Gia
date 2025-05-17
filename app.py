@@ -188,41 +188,26 @@ elif page == "Đề xuất điều chỉnh giá":
         if len(items) > 1:
             combos[sell_id] = list(items)
         else:
-            single_products.append(f"{items[0].lower()}_{sell_id}")
+            single_products.append((items[0], sell_id))  # giữ nguyên tên
 
     # --- Sản phẩm bán lẻ ---
     st.subheader("Sản phẩm bán lẻ")
     single_recommendations = []
 
-    for product in single_products:
-        buying_price = st.number_input(
-            f"Nhập giá mua cho {product}",
-            min_value=0.0,
-            value=9.0,
-            step=0.1,
-            key=f"buying_price_single_{product}"
-        )
-
-        if buying_price <= 0:
-            st.warning(f"⚠️ Giá mua cho {product} phải lớn hơn 0 để tính toán.")
-            continue
-
-        item_name, sell_id = product.split('_')[0].upper(), int(product.split('_')[1])
-        product_data = combined_data[
-            (combined_data['ITEM_NAME'] == item_name) &
-            (combined_data['SELL_ID'] == sell_id)
-        ]
+    for item_name, sell_id in single_products:
+        key = f"{item_name}_{sell_id}"
+        buying_price = st.number_input(f"Nhập giá mua cho {key}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_single_{key}")
+        product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
 
         try:
             result = recommend_price_adjustments(product_data, models, buying_price)
             single_recommendations.extend(result.to_dict('records'))
         except Exception as e:
-            st.error(f"❌ Lỗi khi xử lý {product}: {e}")
+            st.error(f"❌ Lỗi khi xử lý {key}: {e}")
 
     single_df = pd.DataFrame(single_recommendations)
     st.dataframe(single_df)
 
-    # 🔽 Nút tải CSV cho sản phẩm bán lẻ
     csv_single = single_df.to_csv(index=False).encode('utf-8-sig')
     st.download_button("📥 Tải kết quả sản phẩm bán lẻ", data=csv_single, file_name="de_xuat_san_pham.csv", mime='text/csv')
 
@@ -233,41 +218,24 @@ elif page == "Đề xuất điều chỉnh giá":
     for sell_id, items in combos.items():
         buying_prices = {}
         for item in items:
-            key = f"{item.lower()}_{sell_id}"
-            buying_prices[key] = st.number_input(
-                f"Nhập giá mua cho {key} trong combo {sell_id}",
-                min_value=0.0,
-                value=9.0,
-                step=0.1,
-                key=f"buying_price_combo_{key}"
-            )
+            key = f"{item}_{sell_id}"
+            buying_prices[key] = st.number_input(f"Nhập giá mua cho {key} trong combo {sell_id}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_combo_{key}")
 
         for item in items:
-            key = f"{item.lower()}_{sell_id}"
-            bp = buying_prices[key]
-
-            if bp <= 0:
-                st.warning(f"⚠️ Giá mua cho {key} trong combo {sell_id} phải lớn hơn 0.")
-                continue
-
-            product_data = combined_data[
-                (combined_data['ITEM_NAME'] == item.upper()) &
-                (combined_data['SELL_ID'] == sell_id)
-            ]
+            key = f"{item}_{sell_id}"
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item) & (combined_data['SELL_ID'] == sell_id)]
 
             try:
-                result = recommend_price_adjustments(product_data, models, bp)
+                result = recommend_price_adjustments(product_data, models, buying_prices[key])
                 combo_recommendations.extend(result.to_dict('records'))
             except Exception as e:
-                st.error(f"❌ Lỗi khi xử lý {key} trong combo {sell_id}: {e}")
+                st.error(f"❌ Lỗi khi xử lý {key}: {e}")
 
     combo_df = pd.DataFrame(combo_recommendations)
     st.dataframe(combo_df)
 
-    # 🔽 Nút tải CSV cho combo
     csv_combo = combo_df.to_csv(index=False).encode('utf-8-sig')
     st.download_button("📥 Tải kết quả combo", data=csv_combo, file_name="de_xuat_combo.csv", mime='text/csv')
-
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
