@@ -66,30 +66,38 @@ if page == "Giá tối ưu":
     # Hiển thị sản phẩm bán lẻ
     st.subheader("Sản phẩm bán lẻ")
     single_results = []
-    for product in single_products:
-        buying_price = st.number_input(f"Nhập giá mua cho {product}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product}")
-        product_data = combined_data[(combined_data['ITEM_NAME'] == product.split('_')[0].upper()) & 
-                                    (combined_data['SELL_ID'] == int(product.split('_')[1]))]
-        result = find_optimal_price(product_data, models[product], buying_price)
-        single_results.append({
-            'Sản phẩm': product,
-            'Giá tối ưu': round(result['PRICE'].iloc[0], 2),
-            'Số lượng dự đoán': round(result['QUANTITY'].iloc[0], 2),
-            'Lợi nhuận tối đa': round(result['PROFIT'].iloc[0], 2)
-        })
-    st.table(pd.DataFrame(single_results))
-    
+
+    if st.button(" Tính giá tối ưu cho các sản phẩm bán lẻ"):
+        for product in single_products:
+            buying_price = st.number_input(
+                f"Nhập giá mua cho {product}",
+                min_value=0.0, value=9.0, step=0.1,
+                key=f"buying_price_{product}"
+            )
+            product_data = combined_data[
+                (combined_data['ITEM_NAME'] == product.split('_')[0].upper()) &
+                (combined_data['SELL_ID'] == int(product.split('_')[1]))
+            ]
+            result = find_optimal_price(product_data, models[product], buying_price)
+            single_results.append({
+                'Sản phẩm': product,
+                'Giá tối ưu': round(result['PRICE'].iloc[0], 2),
+                'Số lượng dự đoán': round(result['QUANTITY'].iloc[0], 2),
+                'Lợi nhuận tối đa': round(result['PROFIT'].iloc[0], 2)
+            })
+        st.table(pd.DataFrame(single_results))
     # Hiển thị combo
     st.subheader("Combo")
     combo_results = []
-    for sell_id, items in combos.items():
-        # Nhập giá mua cho từng sản phẩm trong combo
-        buying_prices = {}
-        for item in items:
-            product_key = f"{item.lower()}_{sell_id}"
-            buying_prices[product_key] = st.number_input(f"Nhập giá mua cho {product_key} trong combo {sell_id}", 
-                                                        min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product_key}")
-        
+    if st.button(" Tính giá tối ưu cho các sản phẩm bán lẻ"):
+        for sell_id, items in combos.items():
+            # Nhập giá mua cho từng sản phẩm trong combo
+            buying_prices = {}
+            for item in items:
+                product_key = f"{item.lower()}_{sell_id}"
+                buying_prices[product_key] = st.number_input(f"Nhập giá mua cho {product_key} trong combo {sell_id}", 
+                                                            min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product_key}")
+            
         # Tính giá tối ưu và lợi nhuận cho combo
         total_price = 0
         total_quantity = 0
@@ -110,8 +118,6 @@ if page == "Giá tối ưu":
             'Tổng lợi nhuận tối đa': round(total_profit, 2)
         })
     st.table(pd.DataFrame(combo_results))
-
-
 
 # Trang 2: Phân tích giá
 elif page == "Phân tích giá":
@@ -179,10 +185,60 @@ elif page == "Khuyến mãi":
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
-    buying_price = st.number_input("Nhập giá mua", min_value=0.0, value=9.0, step=0.1)
-    
-    recommendations = recommend_price_adjustments(combined_data, models, buying_price)
-    st.table(recommendations)
+
+    sell_ids = combined_data['SELL_ID'].unique()
+    single_products = []
+    combos = {}
+
+    for sell_id in sell_ids:
+        sell_data = combined_data[combined_data['SELL_ID'] == sell_id]
+        items = sell_data['ITEM_NAME'].unique()
+        if len(items) > 1:
+            combos[sell_id] = list(items)
+        else:
+            single_products.append(f"{items[0].lower()}_{sell_id}")
+
+    # --- Sản phẩm bán lẻ ---
+    st.subheader("Sản phẩm bán lẻ")
+    single_recommendations = []
+
+    for product in single_products:
+        buying_price = st.number_input(f"Nhập giá mua cho {product}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_single_{product}")
+        item_name, sell_id = product.split('_')[0].upper(), int(product.split('_')[1])
+        product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
+        result = recommend_price_adjustments(product_data, models, buying_price)
+        single_recommendations.extend(result.to_dict('records'))
+
+    single_df = pd.DataFrame(single_recommendations)
+    st.dataframe(single_df)
+
+    # 🔽 Nút tải CSV cho sản phẩm bán lẻ
+    csv_single = single_df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Tải kết quả sản phẩm bán lẻ", data=csv_single, file_name="de_xuat_san_pham.csv", mime='text/csv')
+
+    # --- Combo ---
+    st.subheader("Combo")
+    combo_recommendations = []
+
+    for sell_id, items in combos.items():
+        buying_prices = {}
+        for item in items:
+            key = f"{item.lower()}_{sell_id}"
+            buying_prices[key] = st.number_input(f"Nhập giá mua cho {key} trong combo {sell_id}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_combo_{key}")
+
+        for item in items:
+            key = f"{item.lower()}_{sell_id}"
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) & (combined_data['SELL_ID'] == sell_id)]
+            result = recommend_price_adjustments(product_data, models, buying_prices[key])
+            combo_recommendations.extend(result.to_dict('records'))
+
+    combo_df = pd.DataFrame(combo_recommendations)
+    st.dataframe(combo_df)
+
+    # 🔽 Nút tải CSV cho combo
+    csv_combo = combo_df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Tải kết quả combo", data=csv_combo, file_name="de_xuat_combo.csv", mime='text/csv')
+
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
