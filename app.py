@@ -9,6 +9,7 @@ from scripts import (
     predict_revenue,
     analyze_discount,
     recommend_price_adjustments,
+    calculate_adjustment,
     plot_price_quantity,
     plot_discount_impact,
     plot_elasticity_factors
@@ -177,25 +178,68 @@ elif page == "Khuyến mãi":
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
-    
-    # Tạo danh sách product_key từ combined_data
-    product_keys = [f"{row['ITEM_NAME'].lower()}_{row['SELL_ID']}" for _, row in combined_data.iterrows()]
-    product_keys = list(set(product_keys))  # loại trùng
-    
-    # Nhập giá mua cho từng sản phẩm
+
+    # Phân loại sản phẩm: đơn lẻ vs combo (giống trang 1)
+    sell_ids = combined_data['SELL_ID'].unique()
+    single_products = []
+    combos = {}
+
+    for sell_id in sell_ids:
+        sell_data = combined_data[combined_data['SELL_ID'] == sell_id]
+        items = sell_data['ITEM_NAME'].unique()
+        if len(items) > 1:
+            combos[sell_id] = list(items)
+        else:
+            single_products.append(f"{items[0].lower()}_{sell_id}")
+
+    # ======= Sản phẩm bán lẻ =======
+    st.subheader("Sản phẩm bán lẻ")
+    single_recommendations = []
     buying_prices = {}
-    for key in product_keys:
-        buying_prices[key] = st.number_input(
-            f"Nhập giá mua cho {key}",
+
+    for product_key in single_products:
+        buying_prices[product_key] = st.number_input(
+            f"Nhập giá mua cho {product_key}",
             min_value=0.0,
             value=9.0,
             step=0.1,
-            key=f"buying_price_{key}"
+            key=f"buying_price_{product_key}"
         )
-    
-    # Tính toán đề xuất điều chỉnh
-    recommendations = recommend_price_adjustments(combined_data, models, buying_prices)
-    st.table(recommendations)
+        item_name = product_key.split('_')[0].upper()
+        sell_id = int(product_key.split('_')[1])
+        product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
+        if product_data.empty:
+            continue
+        result = calculate_adjustment(product_data, models[product_key], buying_prices[product_key], product_key)
+        single_recommendations.append(result)
+
+    st.table(pd.DataFrame(single_recommendations))
+
+    # ======= Combo =======
+    st.subheader("Combo")
+    combo_recommendations = []
+
+    for sell_id, items in combos.items():
+        combo_results = []
+        for item in items:
+            product_key = f"{item.lower()}_{sell_id}"
+            buying_prices[product_key] = st.number_input(
+                f"Nhập giá mua cho {product_key} trong combo {sell_id}",
+                min_value=0.0,
+                value=9.0,
+                step=0.1,
+                key=f"buying_price_{product_key}"
+            )
+            item_name = item.upper()
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
+            if product_data.empty:
+                continue
+            result = calculate_adjustment(product_data, models[product_key], buying_prices[product_key], product_key)
+            combo_results.append(result)
+        
+        combo_recommendations.extend(combo_results)
+
+    st.table(pd.DataFrame(combo_recommendations))
 
 
 # Trang 5: Phân tích bổ sung
