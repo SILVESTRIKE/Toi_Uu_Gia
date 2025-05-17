@@ -4,6 +4,7 @@ import pickle
 import plotly.express as px
 import plotly.graph_objects as go
 from statsmodels.formula.api import ols
+from sklearn.linear_model import LinearRegression
 
 def load_model(file_path):
     with open(file_path, 'rb') as f:
@@ -34,52 +35,73 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'quantity': quantity,
         'profit': profit
     }
-def recommend_price_adjustments(data, models, buying_prices_dict):
-    recommendations = []
+def recommend_price_adjustments(product_data, models, buying_price):
+    import pandas as pd
 
-    for product, model in models.items():
-        try:
-            item_name, sell_id = product.split('_')
-            item_name = item_name.upper()
-            sell_id = int(sell_id)
+    # Trường hợp dữ liệu trống
+    if product_data.empty:
+        return pd.DataFrame([{
+            'ITEM_NAME': None,
+            'SELL_ID': None,
+            'Gợi ý': 'Lỗi: Không có dữ liệu đầu vào'
+        }])
 
-            product_data = data[(data['ITEM_NAME'].str.upper() == item_name) & 
-                              (data['SELL_ID'] == sell_id)]
+    # Kiểm tra các cột quan trọng
+    required_columns = ['QUANTITY', 'SELL_PRICE', 'ITEM_NAME', 'SELL_ID']
+    for col in required_columns:
+        if col not in product_data.columns:
+            return pd.DataFrame([{
+                'ITEM_NAME': product_data['ITEM_NAME'].iloc[0] if 'ITEM_NAME' in product_data else None,
+                'SELL_ID': product_data['SELL_ID'].iloc[0] if 'SELL_ID' in product_data else None,
+                'Gợi ý': f'Lỗi: Thiếu cột {col}'
+            }])
 
-            if product_data.empty or product_data['PRICE'].nunique() < 2 or 'QUANTITY' not in product_data.columns:
-                raise ValueError("Không đủ dữ liệu hoặc thiếu cột QUANTITY hoặc giá không đa dạng")
+    # Nếu giá bán không đa dạng
+    if product_data['SELL_PRICE'].nunique() < 2:
+        return pd.DataFrame([{
+            'ITEM_NAME': product_data['ITEM_NAME'].iloc[0],
+            'SELL_ID': product_data['SELL_ID'].iloc[0],
+            'Gợi ý': 'Lỗi: Giá bán không đủ đa dạng'
+        }])
 
-            current_price = product_data['PRICE'].mean()
-            buying_price = buying_prices_dict.get(product, 0.0)
-            if buying_price == 0.0:
-                buying_price = current_price * 0.8  # Fallback to 80% of current price
+    # Bắt đầu xử lý
+    item_name = product_data['ITEM_NAME'].iloc[0]
+    sell_id = product_data['SELL_ID'].iloc[0]
 
-            optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
+    try:
+        # Fit mô hình tuyến tính để ước lượng co giãn giá
+        model = LinearRegression()
+        X = product_data[['SELL_PRICE']]
+        y = product_data['QUANTITY']
+        model.fit(X, y)
 
-            model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-            elasticity = model_fit.params['PRICE']
+        elasticity = (model.coef_[0]) * (product_data['SELL_PRICE'].mean() / product_data['QUANTITY'].mean())
 
-            adjustment = optimal_price - current_price
+        # Giá trị đề xuất: tăng nếu cầu không co giãn, giảm nếu cầu co giãn
+        suggest_text = ""
+        current_price = product_data['SELL_PRICE'].mean()
+        if elasticity > -1:
+            suggested_price = round(current_price * 1.1, 2)
+            suggest_text = f"Tăng giá lên khoảng {suggested_price} vì cầu không co giãn (E = {elasticity:.2f})"
+        else:
+            suggested_price = round(current_price * 0.9, 2)
+            suggest_text = f"Giảm giá xuống khoảng {suggested_price} vì cầu co giãn (E = {elasticity:.2f})"
 
-            recommendations.append({
-                'Sản phẩm': product,
-                'Giá hiện tại': round(current_price, 2),
-                'Giá tối ưu': round(optimal_price, 2),
-                'Độ co giãn': round(elasticity, 2),
-                'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
-                'Thay đổi': round(abs(adjustment), 2)
-            })
-        except Exception as e:
-            recommendations.append({
-                'Sản phẩm': product,
-                'Giá hiện tại': None,
-                'Giá tối ưu': None,
-                'Độ co giãn': None,
-                'Đề xuất': f'Lỗi: {str(e)}',
-                'Thay đổi': None
-            })
-
-    return pd.DataFrame(recommendations)
+        return pd.DataFrame([{
+            'ITEM_NAME': item_name,
+            'SELL_ID': sell_id,
+            'Co giãn giá (E)': round(elasticity, 2),
+            'Giá hiện tại': round(current_price, 2),
+            'Giá mua': round(buying_price, 2),
+            'Gợi ý': suggest_text
+        }])
+    
+    except Exception as e:
+        return pd.DataFrame([{
+            'ITEM_NAME': item_name,
+            'SELL_ID': sell_id,
+            'Gợi ý': f"Lỗi xử lý: {str(e)}"
+        }])
 
 def plot_price_quantity(data, model):
     prices = np.arange(data.PRICE.min() - 1, data.PRICE.min() + 10, 0.01)

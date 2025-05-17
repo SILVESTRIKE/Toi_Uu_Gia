@@ -7,3 +7,4 @@ matplotlib
 seaborn
 ipython
 jupyter
+scikit-learn
