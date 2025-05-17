@@ -8,7 +8,6 @@ from scripts import (
     find_optimal_price,
     predict_revenue,
     analyze_discount,
-    recommend_price_adjustments,
     calculate_adjustment,
     plot_price_quantity,
     plot_discount_impact,
