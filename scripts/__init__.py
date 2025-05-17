@@ -35,29 +35,56 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'profit': profit
     }
 
-def recommend_price_adjustments(data, models, buying_price):
-    recommendations = []
-    for product, model in models.items():
-        product_data = data[(data['ITEM_NAME'] == product.split('_')[0].upper()) & 
-                          (data['SELL_ID'] == int(product.split('_')[1]))]
-        current_price = product_data.PRICE.mean()
-        optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
-        
-        # Tính độ co giãn giá
+def recommend_price_adjustments(data, model, buying_price, product_key=None):
+    """
+    Recommend price adjustments for a single product based on a predictive model.
+    
+    Parameters:
+    - data: DataFrame with historical sales data (e.g., ITEM_NAME, SELL_ID, PRICE, QUANTITY).
+    - model: A trained statsmodels model for the product.
+    - buying_price: Float, the cost price of the product.
+    - product_key: String, product identifier (e.g., 'item_name_lower_sell_id'), optional.
+    
+    Returns:
+    - DataFrame with recommended price adjustments and metrics.
+    """
+    # Extract product name and SELL_ID from product_key if provided
+    if product_key:
+        product_name = product_key.split('_')[0].upper()
+        sell_id = int(product_key.split('_')[1])
+        product_data = data[(data['ITEM_NAME'] == product_name) & (data['SELL_ID'] == sell_id)]
+    else:
+        product_data = data
+    
+    # Calculate current price (mean of historical prices)
+    current_price = product_data['PRICE'].mean() if 'PRICE' in product_data and not product_data['PRICE'].empty else buying_price * 1.2
+    
+    # Get optimal price using find_optimal_price
+    try:
+        optimal_result = find_optimal_price(product_data, model, buying_price)
+        optimal_price = optimal_result['PRICE'].iloc[0] if 'PRICE' in optimal_result else buying_price * 1.2
+    except Exception:
+        optimal_price = buying_price * 1.2  # Fallback if find_optimal_price fails
+    
+    # Calculate price elasticity using OLS
+    try:
         model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-        elasticity = model_fit.params['PRICE']
-        
-        adjustment = optimal_price - current_price
-        recommendations.append({
-            'Sản phẩm': product,
-            'Giá hiện tại': round(current_price, 2),
-            'Giá tối ưu': round(optimal_price, 2),
-            'Độ co giãn': round(elasticity, 2),
-            'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
-            'Thay đổi': round(abs(adjustment), 2)
-        })
-    return pd.DataFrame(recommendations)
-
+        elasticity = model_fit.params['PRICE'] if 'PRICE' in model_fit.params else 0.0
+    except Exception:
+        elasticity = 0.0  # Fallback if OLS fails
+    
+    # Calculate adjustment
+    adjustment = optimal_price - current_price
+    recommendation = {
+        'Sản phẩm': product_key if product_key else 'Unknown Product',
+        'Giá hiện tại': round(current_price, 2),
+        'Giá tối ưu': round(optimal_price, 2),
+        'Độ co giãn': round(elasticity, 2),
+        'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm' if adjustment < 0 else 'Giữ nguyên',
+        'Thay đổi': round(abs(adjustment), 2)
+    }
+    
+    return pd.DataFrame([recommendation])
 def plot_price_quantity(data, model):
     prices = np.arange(data.PRICE.min() - 1, data.PRICE.min() + 10, 0.01)
     quantities = model.predict(pd.DataFrame({'PRICE': prices}))
