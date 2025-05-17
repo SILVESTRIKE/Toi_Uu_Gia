@@ -34,7 +34,6 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'quantity': quantity,
         'profit': profit
     }
-
 def recommend_price_adjustments(data, models, buying_prices_dict):
     recommendations = []
 
@@ -45,13 +44,15 @@ def recommend_price_adjustments(data, models, buying_prices_dict):
             sell_id = int(sell_id)
 
             product_data = data[(data['ITEM_NAME'].str.upper() == item_name) & 
-                                (data['SELL_ID'] == sell_id)]
+                              (data['SELL_ID'] == sell_id)]
 
-            if product_data.empty or product_data['PRICE'].nunique() < 2:
-                raise ValueError("Không đủ dữ liệu hoặc giá không đa dạng")
+            if product_data.empty or product_data['PRICE'].nunique() < 2 or 'QUANTITY' not in product_data.columns:
+                raise ValueError("Không đủ dữ liệu hoặc thiếu cột QUANTITY hoặc giá không đa dạng")
 
             current_price = product_data['PRICE'].mean()
-            buying_price = buying_prices_dict.get(product, current_price * 0.8)
+            buying_price = buying_prices_dict.get(product, 0.0)
+            if buying_price == 0.0:
+                buying_price = current_price * 0.8  # Fallback to 80% of current price
 
             optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
 
