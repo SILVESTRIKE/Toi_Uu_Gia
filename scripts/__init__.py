@@ -35,35 +35,52 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'profit': profit
     }
 
+
 def recommend_price_adjustments(data, models, buying_price):
     recommendations = []
+
     for product, model in models.items():
-        # Thay đổi cách tách và so sánh tên sản phẩm để giữ nguyên format gốc
-        product_name = product.split('_')[0]  # giữ nguyên case + dấu
-        sell_id = int(product.split('_')[1])
-        product_data = data[(data['ITEM_NAME'] == product_name) & (data['SELL_ID'] == sell_id)]
-        
-        if product_data.empty:
-            # Nếu không có data thì bỏ qua hoặc ghi cảnh báo
-            print(f"Warning: No data for product {product}")
-            continue
-        
-        current_price = product_data.PRICE.mean()
-        optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
-        
-        # Tính độ co giãn giá
-        model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-        elasticity = model_fit.params['PRICE']
-        
-        adjustment = optimal_price - current_price
-        recommendations.append({
-            'Sản phẩm': product,
-            'Giá hiện tại': round(current_price, 2),
-            'Giá tối ưu': round(optimal_price, 2),
-            'Độ co giãn': round(elasticity, 2),
-            'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
-            'Thay đổi': round(abs(adjustment), 2)
-        })
+        try:
+            # Tách tên sản phẩm và SELL_ID
+            item_name, sell_id = product.split('_')
+            item_name = item_name.upper()
+            sell_id = int(sell_id)
+
+            # Lọc dữ liệu cho sản phẩm cụ thể
+            product_data = data[(data['ITEM_NAME'].str.upper() == item_name) & 
+                                (data['SELL_ID'] == sell_id)]
+
+            if product_data.empty or product_data['PRICE'].nunique() < 2:
+                raise ValueError(f"Không đủ dữ liệu hoặc giá không đa dạng cho sản phẩm {product}")
+
+            current_price = product_data['PRICE'].mean()
+            optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
+
+            # Fit mô hình hồi quy
+            model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
+            elasticity = model_fit.params['PRICE']
+
+            adjustment = optimal_price - current_price
+
+            recommendations.append({
+                'Sản phẩm': product,
+                'Giá hiện tại': round(current_price, 2),
+                'Giá tối ưu': round(optimal_price, 2),
+                'Độ co giãn': round(elasticity, 2),
+                'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
+                'Thay đổi': round(abs(adjustment), 2)
+            })
+        except Exception as e:
+            # Log lỗi và tiếp tục xử lý sản phẩm khác
+            recommendations.append({
+                'Sản phẩm': product,
+                'Giá hiện tại': None,
+                'Giá tối ưu': None,
+                'Độ co giãn': None,
+                'Đề xuất': f'Lỗi: {str(e)}',
+                'Thay đổi': None
+            })
+
     return pd.DataFrame(recommendations)
 
 def plot_price_quantity(data, model):

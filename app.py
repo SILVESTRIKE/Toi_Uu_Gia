@@ -14,6 +14,8 @@ from scripts import (
     plot_elasticity_factors
 )
 from scripts.CSV import load_data
+from statsmodels.formula.api import ols
+
 # Thiết lập cấu hình Streamlit
 st.set_page_config(page_title="Tối ưu hóa Giá Quán Cà Phê", layout="wide")
 
@@ -178,6 +180,9 @@ elif page == "Khuyến mãi":
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
 
+    buying_price = st.number_input("Nhập giá mua mặc định (áp dụng nếu không có giá riêng)", min_value=0.0, value=9.0, step=0.1)
+
+    # Nhóm theo combo và sản phẩm đơn
     sell_ids = combined_data['SELL_ID'].unique()
     single_products = []
     combos = {}
@@ -190,83 +195,54 @@ elif page == "Đề xuất điều chỉnh giá":
         else:
             single_products.append(f"{items[0].lower()}_{sell_id}")
 
-    # --- Sản phẩm bán lẻ ---
-    st.subheader("Sản phẩm bán lẻ")
-    single_recommendations = []
+    # Đề xuất cho sản phẩm bán lẻ
+    st.subheader("Đề xuất cho sản phẩm bán lẻ")
+    single_recommendations = recommend_price_adjustments(combined_data, models, buying_price)
+    st.table(single_recommendations)
 
-    for product in single_products:
-        buying_price = st.number_input(
-            f"Nhập giá mua cho {product}",
-            min_value=0.0,
-            value=9.0,
-            step=0.1,
-            key=f"buying_price_single_{product}"
-        )
-
-        if buying_price <= 0:
-            st.warning(f"⚠️ Giá mua cho {product} phải lớn hơn 0 để tính toán.")
-            continue
-
-        item_name, sell_id = product.split('_')[0].upper(), int(product.split('_')[1])
-        product_data = combined_data[
-            (combined_data['ITEM_NAME'] == item_name) &
-            (combined_data['SELL_ID'] == sell_id)
-        ]
-
-        try:
-            result = recommend_price_adjustments(product_data, models, buying_price)
-            single_recommendations.extend(result.to_dict('records'))
-        except Exception as e:
-            st.error(f"❌ Lỗi khi xử lý {product}: {e}")
-
-    single_df = pd.DataFrame(single_recommendations)
-    st.dataframe(single_df)
-
-    # 🔽 Nút tải CSV cho sản phẩm bán lẻ
-    csv_single = single_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Tải kết quả sản phẩm bán lẻ", data=csv_single, file_name="de_xuat_san_pham.csv", mime='text/csv')
-
-    # --- Combo ---
-    st.subheader("Combo")
+    # Đề xuất cho combo
+    st.subheader("Đề xuất cho combo")
     combo_recommendations = []
 
     for sell_id, items in combos.items():
-        buying_prices = {}
-        for item in items:
-            key = f"{item.lower()}_{sell_id}"
-            buying_prices[key] = st.number_input(
-                f"Nhập giá mua cho {key} trong combo {sell_id}",
-                min_value=0.0,
-                value=9.0,
-                step=0.1,
-                key=f"buying_price_combo_{key}"
-            )
+        combo_name = f"Combo {sell_id}: {', '.join(items)}"
+        total_current_price = 0
+        total_optimal_price = 0
+        total_elasticity = 0
+        total_adjustment = 0
+        valid_items = 0
 
         for item in items:
-            key = f"{item.lower()}_{sell_id}"
-            bp = buying_prices[key]
+            product_key = f"{item.lower()}_{sell_id}"
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) &
+                                         (combined_data['SELL_ID'] == sell_id)]
 
-            if bp <= 0:
-                st.warning(f"⚠️ Giá mua cho {key} trong combo {sell_id} phải lớn hơn 0.")
+            if product_key not in models:
                 continue
 
-            product_data = combined_data[
-                (combined_data['ITEM_NAME'] == item.upper()) &
-                (combined_data['SELL_ID'] == sell_id)
-            ]
+            optimal_result = find_optimal_price(product_data, models[product_key], buying_price)
+            optimal_price = optimal_result['PRICE'].iloc[0]
+            current_price = product_data.PRICE.mean()
+            model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
+            elasticity = model_fit.params['PRICE']
 
-            try:
-                result = recommend_price_adjustments(product_data, models, bp)
-                combo_recommendations.extend(result.to_dict('records'))
-            except Exception as e:
-                st.error(f"❌ Lỗi khi xử lý {key} trong combo {sell_id}: {e}")
+            total_current_price += current_price
+            total_optimal_price += optimal_price
+            total_elasticity += elasticity
+            total_adjustment += abs(optimal_price - current_price)
+            valid_items += 1
 
-    combo_df = pd.DataFrame(combo_recommendations)
-    st.dataframe(combo_df)
+        if valid_items > 0:
+            combo_recommendations.append({
+                'Combo': combo_name,
+                'Tổng giá hiện tại': round(total_current_price, 2),
+                'Tổng giá tối ưu': round(total_optimal_price, 2),
+                'Tổng độ co giãn': round(total_elasticity, 2),
+                'Đề xuất': 'Tăng' if total_optimal_price > total_current_price else 'Giảm',
+                'Tổng thay đổi': round(total_adjustment, 2)
+            })
 
-    # 🔽 Nút tải CSV cho combo
-    csv_combo = combo_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Tải kết quả combo", data=csv_combo, file_name="de_xuat_combo.csv", mime='text/csv')
+    st.table(pd.DataFrame(combo_recommendations))
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
