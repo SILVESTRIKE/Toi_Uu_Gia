@@ -35,28 +35,40 @@ def analyze_discount(data, model, discount_percent, buying_price):
         'profit': profit
     }
 
-def recommend_price_adjustments(data, models, buying_price):
+def recommend_price_adjustments(data, models, buying_prices):
     recommendations = []
-    for product, model in models.items():
-        product_data = data[(data['ITEM_NAME'] == product.split('_')[0].upper()) & 
-                          (data['SELL_ID'] == int(product.split('_')[1]))]
-        current_price = product_data.PRICE.mean()
-        optimal_price = find_optimal_price(product_data, model, buying_price)['PRICE'].iloc[0]
+    for product_key, model in models.items():
+        item_name = product_key.split('_')[0].upper()
+        sell_id = int(product_key.split('_')[1])
+        buying_price = buying_prices.get(product_key, 9.0)  # fallback giá mua mặc định nếu thiếu
+        
+        product_data = data[(data['ITEM_NAME'] == item_name) & (data['SELL_ID'] == sell_id)]
+        
+        if product_data.empty:
+            continue
+        
+        current_price = product_data['PRICE'].mean()
+        optimal_result = find_optimal_price(product_data, model, buying_price)
+        optimal_price = optimal_result['PRICE'].iloc[0]
         
         # Tính độ co giãn giá
-        model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-        elasticity = model_fit.params['PRICE']
+        try:
+            model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
+            elasticity = model_fit.params['PRICE']
+        except:
+            elasticity = float('nan')  # Nếu lỗi hồi quy (thiếu data chẳng hạn)
         
         adjustment = optimal_price - current_price
         recommendations.append({
-            'Sản phẩm': product,
+            'Sản phẩm': product_key,
             'Giá hiện tại': round(current_price, 2),
             'Giá tối ưu': round(optimal_price, 2),
-            'Độ co giãn': round(elasticity, 2),
+            'Độ co giãn': round(elasticity, 2) if not pd.isna(elasticity) else "N/A",
             'Đề xuất': 'Tăng' if adjustment > 0 else 'Giảm',
             'Thay đổi': round(abs(adjustment), 2)
         })
     return pd.DataFrame(recommendations)
+
 
 def plot_price_quantity(data, model):
     prices = np.arange(data.PRICE.min() - 1, data.PRICE.min() + 10, 0.01)

@@ -177,10 +177,26 @@ elif page == "Khuyến mãi":
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
-    buying_price = st.number_input("Nhập giá mua", min_value=0.0, value=9.0, step=0.1)
     
-    recommendations = recommend_price_adjustments(combined_data, models, buying_price)
+    # Tạo danh sách product_key từ combined_data
+    product_keys = [f"{row['ITEM_NAME'].lower()}_{row['SELL_ID']}" for _, row in combined_data.iterrows()]
+    product_keys = list(set(product_keys))  # loại trùng
+    
+    # Nhập giá mua cho từng sản phẩm
+    buying_prices = {}
+    for key in product_keys:
+        buying_prices[key] = st.number_input(
+            f"Nhập giá mua cho {key}",
+            min_value=0.0,
+            value=9.0,
+            step=0.1,
+            key=f"buying_price_{key}"
+        )
+    
+    # Tính toán đề xuất điều chỉnh
+    recommendations = recommend_price_adjustments(combined_data, models, buying_prices)
     st.table(recommendations)
+
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
