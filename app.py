@@ -14,8 +14,6 @@ from scripts import (
     plot_elasticity_factors
 )
 from scripts.CSV import load_data
-from statsmodels.formula.api import ols
-
 # Thiết lập cấu hình Streamlit
 st.set_page_config(page_title="Tối ưu hóa Giá Quán Cà Phê", layout="wide")
 
@@ -175,15 +173,12 @@ elif page == "Khuyến mãi":
     # Vẽ biểu đồ
     fig = plot_discount_impact(product_data, models[product], buying_price)
     st.plotly_chart(fig)
+
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
-    st.title("📊 Đề xuất Điều chỉnh Giá")
-
-    st.markdown("### 💰 Nhập giá mua riêng cho từng sản phẩm (nếu không có, sẽ dùng giá mặc định)")
-
-    buying_price_default = st.number_input("Giá mua mặc định", min_value=0.0, value=9.0, step=0.1)
-
-    # Tách sản phẩm thành sản phẩm đơn và combo
+    st.title("Đề xuất Điều chỉnh Giá")
+    
+    # Nhóm sản phẩm thành combo dựa trên SELL_ID
     sell_ids = combined_data['SELL_ID'].unique()
     single_products = []
     combos = {}
@@ -194,81 +189,61 @@ elif page == "Đề xuất điều chỉnh giá":
         if len(items) > 1:
             combos[sell_id] = list(items)
         else:
-            product_key = f"{items[0].lower()}_{sell_id}"
-            single_products.append(product_key)
-
-    # Nhập giá mua riêng cho từng sản phẩm đơn
-    buying_prices = {}
-    with st.expander("🔧 Nhập giá mua từng sản phẩm đơn"):
-        for product_key in single_products:
-            item_name, sell_id = product_key.split('_')
-            item_data = combined_data[(combined_data['ITEM_NAME'] == item_name.upper()) & 
-                                      (combined_data['SELL_ID'] == int(sell_id))]
-            default_price = round(item_data['PRICE'].mean() * 0.8, 2)
-            buying_prices[product_key] = st.number_input(
-                f"Giá mua cho {item_name.upper()} (SELL_ID {sell_id})",
-                value=default_price,
-                min_value=0.0,
-                step=0.1,
-                key=f"bp_{product_key}"
-            )
-
-    # 👉 Nếu thiếu giá riêng => dùng giá mặc định
+            single_products.append(f"{items[0].lower()}_{sell_id}")
+    
+    st.subheader("Sản phẩm bán lẻ")
+    single_recommendations = []
     for product in single_products:
-        if product not in buying_prices:
-            buying_prices[product] = buying_price_default
-
-    # Đề xuất cho sản phẩm đơn
-    st.subheader("🛍️ Đề xuất cho sản phẩm bán lẻ")
-    single_recommendations = recommend_price_adjustments(combined_data, models, buying_prices)
-    st.dataframe(single_recommendations, use_container_width=True)
-
-    # Đề xuất cho combo
-    st.subheader("🧃 Đề xuất cho Combo sản phẩm")
-
+        buying_price = st.number_input(
+            f"Nhập giá mua cho {product}", 
+            min_value=0.0, value=9.0, step=0.1, 
+            key=f"adjust_buying_price_{product}"
+        )
+        product_data = combined_data[
+            (combined_data['ITEM_NAME'] == product.split('_')[0].upper()) &
+            (combined_data['SELL_ID'] == int(product.split('_')[1]))
+        ]
+        # Giả sử recommend_price_adjustments có nhận thêm tham số giá mua, hoặc bạn gọi find_optimal_price
+        rec = recommend_price_adjustments(product_data, models[product], buying_price)
+        single_recommendations.append(rec)
+    
+    if single_recommendations:
+        # Nếu recommend_price_adjustments trả về DataFrame, gộp lại
+        st.subheader("Đề xuất điều chỉnh giá cho sản phẩm bán lẻ")
+        st.table(pd.concat(single_recommendations, ignore_index=True))
+    
+    st.subheader("Combo")
     combo_recommendations = []
     for sell_id, items in combos.items():
-        combo_name = f"Combo {sell_id}: {', '.join(items)}"
-        total_current_price = 0
-        total_optimal_price = 0
-        total_elasticity = 0
-        total_adjustment = 0
-        valid_items = 0
-
+        buying_prices = {}
         for item in items:
             product_key = f"{item.lower()}_{sell_id}"
-            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) & 
-                                         (combined_data['SELL_ID'] == sell_id)]
-
-            if product_key not in models or product_data.empty:
-                continue
-
-            # Lấy giá mua riêng hoặc mặc định
-            buying_price = buying_prices.get(product_key, buying_price_default)
-
-            optimal_result = find_optimal_price(product_data, models[product_key], buying_price)
-            optimal_price = optimal_result['PRICE'].iloc[0]
-            current_price = product_data['PRICE'].mean()
-            model_fit = ols("QUANTITY ~ PRICE", data=product_data).fit()
-            elasticity = model_fit.params['PRICE']
-
-            total_current_price += current_price
-            total_optimal_price += optimal_price
-            total_elasticity += elasticity
-            total_adjustment += abs(optimal_price - current_price)
-            valid_items += 1
-
-        if valid_items > 0:
-            combo_recommendations.append({
-                'Combo': combo_name,
-                'Tổng giá hiện tại': round(total_current_price, 2),
-                'Tổng giá tối ưu': round(total_optimal_price, 2),
-                'Tổng độ co giãn': round(total_elasticity, 2),
-                'Đề xuất': 'Tăng' if total_optimal_price > total_current_price else 'Giảm',
-                'Tổng thay đổi': round(total_adjustment, 2)
-            })
-
-    st.dataframe(pd.DataFrame(combo_recommendations), use_container_width=True)
+            buying_prices[product_key] = st.number_input(
+                f"Nhập giá mua cho {product_key} trong combo {sell_id}",
+                min_value=0.0, value=9.0, step=0.1, 
+                key=f"adjust_buying_price_{product_key}"
+            )
+        
+        # Tính đề xuất cho từng món combo rồi gộp hoặc tính cho combo
+        combo_data_frames = []
+        for item in items:
+            product_key = f"{item.lower()}_{sell_id}"
+            product_data = combined_data[
+                (combined_data['ITEM_NAME'] == item.upper()) & 
+                (combined_data['SELL_ID'] == sell_id)
+            ]
+            rec = recommend_price_adjustments(product_data, models[product_key], buying_prices[product_key])
+            combo_data_frames.append(rec)
+        
+        # Gộp kết quả combo theo SELL_ID hoặc tùy logic
+        # Ví dụ: tổng hợp lại thành 1 bảng combo
+        combo_df = pd.concat(combo_data_frames, ignore_index=True)
+        combo_df['Combo'] = f"Combo {sell_id}: {', '.join(items)}"
+        combo_recommendations.append(combo_df)
+    
+    if combo_recommendations:
+        st.subheader("Đề xuất điều chỉnh giá cho combo")
+        st.table(pd.concat(combo_recommendations, ignore_index=True))
 
 
 # Trang 5: Phân tích bổ sung
