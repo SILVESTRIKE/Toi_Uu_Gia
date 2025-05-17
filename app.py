@@ -236,7 +236,7 @@ elif page == "Đề xuất điều chỉnh giá":
         buying_prices = {}
         st.markdown(f"**Combo SELL_ID: {sell_id}**")
         for item in items:
-            key = f"{item.lower()}_{sell_id}"
+            key = f"{item}_{sell_id}"
             buying_prices[item] = st.number_input(
                 f"Nhập giá mua cho {item.upper()} trong combo {sell_id}",
                 min_value=0.0, value=9.0, step=0.1,
@@ -249,7 +249,7 @@ elif page == "Đề xuất điều chỉnh giá":
                 (combined_data['ITEM_NAME'] == item.upper()) & 
                 (combined_data['SELL_ID'] == sell_id)
             ]
-            model = models[f"{item.upper()}_{sell_id}"]
+            model = models[f"{item}_{sell_id}"]
             result = recommend_price_adjustments(product_data, model, buying_price)
             combo_recommendations.extend(result.to_dict('records'))
 
