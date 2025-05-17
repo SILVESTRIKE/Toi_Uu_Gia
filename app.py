@@ -177,67 +177,65 @@ elif page == "Khuyến mãi":
 # Trang 4: Đề xuất điều chỉnh giá
 elif page == "Đề xuất điều chỉnh giá":
     st.title("Đề xuất Điều chỉnh Giá")
-    
-    # Nhóm sản phẩm thành combo dựa trên SELL_ID
+
     sell_ids = combined_data['SELL_ID'].unique()
     single_products = []
     combos = {}
-    
+
     for sell_id in sell_ids:
-        # Lấy dữ liệu cho SELL_ID
         sell_data = combined_data[combined_data['SELL_ID'] == sell_id]
         items = sell_data['ITEM_NAME'].unique()
-        if len(items) > 1:  # Nếu có nhiều hơn 1 sản phẩm, là combo
+        if len(items) > 1:
             combos[sell_id] = list(items)
-        else:  # Nếu chỉ có 1 sản phẩm, là bán lẻ
-            single_products.append(f"{items[0].lower()}_{sell_id}")
-    
-    # Hiển thị đề xuất cho sản phẩm bán lẻ
+        else:
+            single_products.append((items[0], sell_id))  # giữ nguyên tên
+
+    # --- Sản phẩm bán lẻ ---
     st.subheader("Sản phẩm bán lẻ")
-    single_results = []
-    for product in single_products:
-        buying_price = st.number_input(f"Nhập giá mua cho {product}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product}")
-        product_data = combined_data[(combined_data['ITEM_NAME'] == product.split('_')[0].upper()) & 
-                                    (combined_data['SELL_ID'] == int(product.split('_')[1]))]
-        result = recommend_price_adjustments(product_data, models[product], buying_price)
-        single_results.append({
-            'Sản phẩm': product,
-            'Giá đề xuất': round(result['PRICE'].iloc[0], 2) if 'PRICE' in result else 0.0,
-            'Số lượng dự đoán': round(result['QUANTITY'].iloc[0], 2) if 'QUANTITY' in result else 0.0,
-            'Lợi nhuận dự kiến': round(result['PROFIT'].iloc[0], 2) if 'PROFIT' in result else 0.0
-        })
-    st.table(pd.DataFrame(single_results))
-    
-    # Hiển thị đề xuất cho combo
+    single_recommendations = []
+
+    for item_name, sell_id in single_products:
+        key = f"{item_name}_{sell_id}"
+        buying_price = st.number_input(f"Nhập giá mua cho {key}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_single_{key}")
+        product_data = combined_data[(combined_data['ITEM_NAME'] == item_name) & (combined_data['SELL_ID'] == sell_id)]
+
+        try:
+            result = recommend_price_adjustments(product_data, models, buying_price)
+            single_recommendations.extend(result.to_dict('records'))
+        except Exception as e:
+            st.error(f"❌ Lỗi khi xử lý {key}: {e}")
+
+    single_df = pd.DataFrame(single_recommendations)
+    st.dataframe(single_df)
+
+    csv_single = single_df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Tải kết quả sản phẩm bán lẻ", data=csv_single, file_name="de_xuat_san_pham.csv", mime='text/csv')
+
+    # --- Combo ---
     st.subheader("Combo")
-    combo_results = []
+    combo_recommendations = []
+
     for sell_id, items in combos.items():
-        # Nhập giá mua cho từng sản phẩm trong combo
         buying_prices = {}
         for item in items:
-            product_key = f"{item.lower()}_{sell_id}"
-            buying_prices[product_key] = st.number_input(f"Nhập giá mua cho {product_key} trong combo {sell_id}", 
-                                                        min_value=0.0, value=9.0, step=0.1, key=f"buying_price_{product_key}")
-        # Tính giá đề xuất và lợi nhuận cho combo
-        total_price = 0
-        total_quantity = 0
-        total_profit = 0
+            key = f"{item}_{sell_id}"
+            buying_prices[key] = st.number_input(f"Nhập giá mua cho {key} trong combo {sell_id}", min_value=0.0, value=9.0, step=0.1, key=f"buying_price_combo_{key}")
+
         for item in items:
-            product_key = f"{item.lower()}_{sell_id}"
-            product_data = combined_data[(combined_data['ITEM_NAME'] == item.upper()) & 
-                                        (combined_data['SELL_ID'] == sell_id)]
-            result = recommend_price_adjustments(product_data, models[product_key], buying_prices[product_key])
-            total_price += result['PRICE'].iloc[0] if 'PRICE' in result else 0.0
-            total_quantity += result['QUANTITY'].iloc[0] if 'QUANTITY' in result else 0.0
-            total_profit += result['PROFIT'].iloc[0] if 'PROFIT' in result else 0.0
-        
-        combo_results.append({
-            'Combo': f"Combo {sell_id}: {', '.join(items)}",
-            'Tổng giá đề xuất': round(total_price, 2),
-            'Tổng số lượng dự đoán': round(total_quantity, 2),
-            'Tổng lợi nhuận dự kiến': round(total_profit, 2)
-        })
-    st.table(pd.DataFrame(combo_results))
+            key = f"{item}_{sell_id}"
+            product_data = combined_data[(combined_data['ITEM_NAME'] == item) & (combined_data['SELL_ID'] == sell_id)]
+
+            try:
+                result = recommend_price_adjustments(product_data, models, buying_prices[key])
+                combo_recommendations.extend(result.to_dict('records'))
+            except Exception as e:
+                st.error(f"❌ Lỗi khi xử lý {key}: {e}")
+
+    combo_df = pd.DataFrame(combo_recommendations)
+    st.dataframe(combo_df)
+
+    csv_combo = combo_df.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 Tải kết quả combo", data=csv_combo, file_name="de_xuat_combo.csv", mime='text/csv')
 
 # Trang 5: Phân tích bổ sung
 elif page == "Phân tích bổ sung":
